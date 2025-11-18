@@ -3423,8 +3423,30 @@ import { RenderPass } from "https://esm.sh/three@0.158.0/examples/jsm/postproces
 import { UnrealBloomPass } from "https://esm.sh/three@0.158.0/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /* -----------------------
+   Mobile detection
+----------------------- */
+// GRID SETTINGS
+const IS_MOBILE = window.innerWidth <= 768;
+
+// Número de cuadros por cara (NxN) → tú decides
+const GRID_DESKTOP = 10;  // 22×22 como lo tienes ahora
+const GRID_MOBILE  = 4;   // 4×4 = 16 cuadros
+
+// Convertimos cuadros a "divisions" (cortes por eje)
+const DIVISIONS = IS_MOBILE ? GRID_MOBILE : GRID_DESKTOP;
+
+
+function updateDivisions() {
+  IS_MOBILE = window.innerWidth <= 768;
+
+  // Actualiza divisiones dinámicas
+  window.DIVISIONS = IS_MOBILE ? GRID_MOBILE : GRID_DESKTOP;
+}
+
+
+/* -----------------------
    Renderer / Scene / Cam
-   ----------------------- */
+----------------------- */
 const canvas = document.getElementById('three-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.max(1, window.devicePixelRatio || 1));
@@ -3440,175 +3462,180 @@ scene.add(camera);
 /* composer + bloom */
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.55, 0.12);
+
+// Glow suave base
+const glow = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.25,
+  0.8,
+  0.6
+);
+composer.addPass(glow);
+
+// Bloom principal
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.9,
+  0.55,
+  0.12
+);
 composer.addPass(bloom);
 
 /* -----------------------
    Room builder (grid cube)
-   ----------------------- */
-function buildGridRoom(size = 1400, divisions = 22) {
+----------------------- */
+function buildGridRoom(size = 1400) {
+
+
+  // 🔥 ÚNICO CAMBIO SOLICITADO
+  const DIVISIONS = IS_MOBILE ? GRID_MOBILE : GRID_DESKTOP;
+
+
   const group = new THREE.Group();
 
   function addGrid(origin, u, v, colorHex, opacity = 0.9) {
-    const step = size / divisions;
+    const step = size / DIVISIONS;
     const verts = [];
-    for (let i = 0; i <= divisions; i++) {
-      const uval = -size/2 + i*step;
+
+    for (let i = 0; i <= DIVISIONS; i++) {
+      const uval = -size/2 + i * step;
       const A = origin.clone().addScaledVector(u, uval).addScaledVector(v, -size/2);
       const B = origin.clone().addScaledVector(u, uval).addScaledVector(v,  size/2);
       verts.push(A.x,A.y,A.z, B.x,B.y,B.z);
     }
-    for (let j = 0; j <= divisions; j++) {
-      const vval = -size/2 + j*step;
+
+    for (let j = 0; j <= DIVISIONS; j++) {
+      const vval = -size/2 + j * step;
       const A = origin.clone().addScaledVector(u, -size/2).addScaledVector(v, vval);
       const B = origin.clone().addScaledVector(u,  size/2).addScaledVector(v, vval);
       verts.push(A.x,A.y,A.z, B.x,B.y,B.z);
     }
+
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    const mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: opacity, toneMapped: false });
+
+    const mat = new THREE.LineBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: opacity,
+      toneMapped: false
+    });
+
     const lines = new THREE.LineSegments(g, mat);
     group.add(lines);
   }
 
-  addGrid(new THREE.Vector3(0,0,size/2),  new THREE.Vector3(1,0,0), new THREE.Vector3(0,-1,0), 0x7CFF5A); // front
-  addGrid(new THREE.Vector3(0,0,-size/2), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,-1,0), 0x47F0C8, 0.72); // back (darker)
-  addGrid(new THREE.Vector3(-size/2,0,0), new THREE.Vector3(0,0,1),  new THREE.Vector3(0,-1,0), 0x47F0C8);
-  addGrid(new THREE.Vector3(size/2,0,0),  new THREE.Vector3(0,0,-1), new THREE.Vector3(0,-1,0), 0x7CFF5A);
-  addGrid(new THREE.Vector3(0,-size/2,0), new THREE.Vector3(1,0,0),  new THREE.Vector3(0,0,1),  0x47F0C8);
-  addGrid(new THREE.Vector3(0,size/2,0),  new THREE.Vector3(1,0,0),  new THREE.Vector3(0,0,-1), 0x7CFF5A);
+  addGrid(new THREE.Vector3(0,0,size/2),  new THREE.Vector3(1,0,0), new THREE.Vector3(0,-1,0), 0x7CFF5A);
+  addGrid(new THREE.Vector3(0,0,-size/2), new THREE.Vector3(-1,0,0),new THREE.Vector3(0,-1,0), 0x47F0C8, 0.72);
+  addGrid(new THREE.Vector3(-size/2,0,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,-1,0),  0x47F0C8);
+  addGrid(new THREE.Vector3(size/2,0,0),  new THREE.Vector3(0,0,-1),new THREE.Vector3(0,-1,0), 0x7CFF5A);
+  addGrid(new THREE.Vector3(0,-size/2,0), new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,1),  0x47F0C8);
+  addGrid(new THREE.Vector3(0,size/2,0),  new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,-1), 0x7CFF5A);
 
   return group;
 }
+
 const room = buildGridRoom(1400, 22);
 room.rotation.set(0.25, 0.8, 0);
 scene.add(room);
 
 /* -----------------------
-   (removed glow sphere) -- you said it shouldn't be there
-   ----------------------- */
-
-/* -----------------------
-   Camera framing / states (script1 hero + script2 cine)
-   ----------------------- */
+   Camera scroll track
+----------------------- */
 const track = {
-  start: new THREE.Vector3(700, 180, 980), // <-- match your hero camera start
-  mid:   new THREE.Vector3(700, 180, 980), // will be overwritten on first scroll (safe)
-  end:   new THREE.Vector3(0, 40, 520)     // cinematic target
+  start: new THREE.Vector3(700, 180, 980),
+  mid:   new THREE.Vector3(700, 180, 980),
+  end:   new THREE.Vector3(0, 40, 520)
 };
 
-/* start in hero */
 camera.position.copy(track.start);
-camera.lookAt(new THREE.Vector3(1000, -20, 0)); // hero look (keeps same composition)
+camera.lookAt(new THREE.Vector3(1000, -20, 0));
 
-/* interpolation state */
+if (IS_MOBILE) {
+  track.start.set(250, 120, 2000);  
+  track.mid.set(250, 120, 1500);
+  track.end.set(250, 120, 4000);
+}
+
 const state = { t: 0 };
-
-/* firstScroll guard to capture dynamic start */
 let firstScroll = true;
 
-/* -----------------------
-   Scroll mapping (map whole page scroll to 0..1)
-   ----------------------- */
 let docH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
 function updateDocHeight(){ docH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight); }
-window.addEventListener('load', updateDocHeight);
-window.addEventListener('resize', () => { updateDocHeight(); renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth, innerHeight); });
 
+window.addEventListener('load', updateDocHeight);
+window.addEventListener('resize', () => {
+  updateDocHeight();
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  composer.setSize(innerWidth, innerHeight);
+  bloom.setSize(innerWidth, innerHeight);
+});
+
+/* scroll mapping */
 window.addEventListener('scroll', () => {
   const scrollY = window.scrollY || window.pageYOffset;
   const maxScroll = Math.max(1, docH - innerHeight);
 
-  // On first scroll -> capture dynamic start & mid to avoid jump
   if (firstScroll && scrollY > 2) {
     firstScroll = false;
-    // copy current camera position as the real start
     track.start.copy(camera.position);
-    // set mid to be slightly toward cinematic but start from current to avoid abrupt curve.
-    // mid will be used in sampleTrack (we emulate your sampleTrack with start-mid-end)
     track.mid.copy(camera.position);
   }
 
-  // map entire scroll to 0..1 (you wanted full scroll drive)
   state.t = Math.min(1, Math.max(0, scrollY / maxScroll));
 });
 
-/* easing */
 function smoothstep(x){ return x*x*(3 - 2*x); }
 
-/* sample track similar to your sampleTrack function */
 function sampleTrack(t) {
-  // t in 0..1, we do start -> mid for first half, mid -> end for second
   if (t < 0.5) return new THREE.Vector3().lerpVectors(track.start, track.mid, smoothstep(t*2));
   return new THREE.Vector3().lerpVectors(track.mid, track.end, smoothstep((t-0.5)*2));
 }
 
 /* -----------------------
    Animation loop
-   ----------------------- */
+----------------------- */
 let last = performance.now();
 function animate(now){
   requestAnimationFrame(animate);
-  const dt = (now - last) / 1000; last = now;
+  const dt = (now - last) / 1000;
+  last = now;
 
-  // eased progress
   const e = smoothstep(state.t);
 
-  // camera position driven by scroll path (sampleTrack returns target)
-  const camBase = sampleTrack(state.t);
-  // we lerp gradually so motion is smooth even when user scroll is jerky
-  camera.position.lerp(camBase, 0.08);
+  camera.position.lerp(sampleTrack(state.t), 0.08);
 
-  // lookAt interpolation: hero-look -> center look as we enter
   const heroLook = new THREE.Vector3(1000, -20, 0);
   const cineLook = new THREE.Vector3(0, -20, 0);
-  const look = new THREE.Vector3().lerpVectors(heroLook, cineLook, e);
-  camera.lookAt(look);
+  camera.lookAt(new THREE.Vector3().lerpVectors(heroLook, cineLook, e));
 
-  // Idle rotation while hero (subtle). We want NO automatic heavy rotation at hero:
-  // Keep it very gentle always; when cinematic, allow slight rotation but slower than previous.
-  // rotMix = how much hero idle should apply (1 at hero, 0 at cine)
   const rotMix = 1 - e;
-  // hero idle: tiny movements
-  room.rotation.y += 0.0015 * rotMix; // very slow
+
+  room.rotation.y += 0.0015 * rotMix;
   room.rotation.x += 0.0008 * rotMix;
 
-// inside cinematic: ultra slow, subtle rotation (Ultra Slow Tron Mode)
-if (e > 0.01) {
-    // Yaw: rotación principal super lenta
+  if (e > 0.01) {
     room.rotation.y += 0.00065 * dt * 60;
-
-    // Wobble X: movimiento casi imperceptible, muy suave
     room.rotation.x += 0.00018 * Math.sin(now * 0.00045);
-
-    // Roll Z: micro movimiento, SUPER sutil (casi fijo)
     room.rotation.z = 0.00035 * Math.sin(now * 0.00035);
-} else {
+  } else {
     room.rotation.z = 0;
-}
+  }
 
+  room.scale.set(
+    0.78 + (1.35 - 0.78) * e,
+    0.78 + (1.35 - 0.78) * e,
+    0.78 + (1.35 - 0.78) * e
+  );
 
-
-  // room scale interpolation (feeling of entering)
-  /* Ultra Cinematic Growth */
-let baseScale = 0.85;       // tamaño en hero (igual al tuyo)
-let maxScale  = 1.35;       // tamaño cuando estás dentro del cubo
-let growth    = baseScale + (maxScale - baseScale) * e;
-
-room.scale.set(growth, growth, growth);
-
-
-  // bloom ramp a bit with cinematic
   bloom.strength = 0.7 + e * 0.9;
 
-  // render
   composer.render();
 }
+
 requestAnimationFrame(animate);
-
-/* debug helper */
-window.__itb = { room, camera, track, state };
-
 </script>
 </body>
 </html>
